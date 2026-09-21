@@ -10,7 +10,7 @@ The project was developed to simplify the setup process for FreeRadius, RadSecPr
 
 OpenRoaming is an **open standard developed to enable global, secure, and automatic Wi-Fi connectivity**. With OpenRoaming, users can connect to Wi-Fi networks without being prompted for login credentials, while carrying a unique embedded identity.
 
-The script (`hybrid/prepare-debian11.sh`) provided in this project simplifies the setup of FreeRadius, RadSecProxy, and MariaDB by automating the process of preparing the necessary certificates, realm names, IP addresses, and other required information — installing everything natively via `systemd`, no Docker required.
+The script (`prepare-debian11.sh`) provided in this project simplifies the setup of FreeRadius, RadSecProxy, and MariaDB by automating the process of preparing the necessary certificates, realm names, IP addresses, and other required information — installing everything natively via `systemd`, no Docker required.
 
 For more information about OpenRoaming Technology please visit: https://openroaming.org
 
@@ -31,7 +31,7 @@ There are two options to retrieve the project:
 ```
 
 2. **Download Release Package**: Or if you can just download the release package from the releases section on GitHub. This package contains
-   only the required components to run, including `hybrid/prepare-debian11.sh` and the associated config files.
+   only the required components to run, including `prepare-debian11.sh` and the associated config files.
 
    
 # ⚙️ Installation Guide

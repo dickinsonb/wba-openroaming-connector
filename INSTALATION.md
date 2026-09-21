@@ -15,10 +15,9 @@ The hybrid connector installs FreeRADIUS, radsecproxy, and (optionally) MariaDB 
 
 ## Get Started
 
-Begin by preparing the system using the provided configuration script: **`hybrid/prepare-debian11.sh`**.  
+Begin by preparing the system using the provided configuration script: **`prepare-debian11.sh`**.  
 It configures FreeRADIUS by performing key steps such as installing dependencies, validating required certificates, and preparing the necessary configurations for deployment. This ensures a smooth and consistent installation process.
 
-- All configurations for this project are applied inside the **hybrid** folder. The folders located at the same root level of the project are only used during the initial installation.
 - Ensure that the **`prepare-debian11.sh`** script is run **only once**:
    - After the first run, the configuration variables will be removed and overwritten.
    - To rerun the script or fix issues, you must either start the entire guide again or selectively modify specific files under `/etc/radsecproxy.conf`, `/etc/freeradius/3.0/`, and re-run the relevant `systemctl restart` command.
@@ -82,7 +81,7 @@ After meeting the requirements, execute the **`prepare-debian11.sh`** script to 
 #### How to Run the Script:
 1. Make sure you are in the root folder of the project:
    ```bash
-   cd ~/wba-openroaming-connector/hybrid
+   cd ~/wba-openroaming-connector
    ```
 
 2. Execute the script:
@@ -92,7 +91,7 @@ After meeting the requirements, execute the **`prepare-debian11.sh`** script to 
 
 #### Example:
 ```bash
-root@tetrapi-XPS-15-7590:~/wba-openroaming-connector/hybrid# ./prepare-debian11.sh
+root@tetrapi-XPS-15-7590:~/wba-openroaming-connector# ./prepare-debian11.sh
 ```
 
 ---

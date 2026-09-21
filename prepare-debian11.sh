@@ -7,7 +7,7 @@
 #   - MariaDB (installed locally, or skipped if pointed at a remote/DBaaS host)
 #
 # Usage:
-#   $ curl -fsSL https://raw.githubusercontent.com/wireless-broadband-alliance/wba-openroaming-connector/main/hybrid/prepare-debian11.sh -o prepare-debian11.sh
+#   $ curl -fsSL https://raw.githubusercontent.com/wireless-broadband-alliance/wba-openroaming-connector/main/prepare-debian11.sh -o prepare-debian11.sh
 #   $ chmod +x prepare-debian11.sh
 #   $ ./prepare-debian11.sh
 
@@ -16,7 +16,6 @@ set -euo pipefail
 REPO_URL="https://github.com/wireless-broadband-alliance/wba-openroaming-connector.git"
 CERTS_PATH="/root/wba-openroaming-connector/certs"
 PROJECT_PATH="/root/wba-openroaming-connector"
-HYBRID_PATH="${PROJECT_PATH}/hybrid"
 
 RADSECPROXY_VERSION="1.11.4"
 RADSECPROXY_URL="https://github.com/radsecproxy/radsecproxy/releases/download/${RADSECPROXY_VERSION}/radsecproxy-${RADSECPROXY_VERSION}.tar.gz"
@@ -133,9 +132,9 @@ fi
 # ---------------------------------------------------------------------------
 # 5. Apply the FreeRADIUS SQL schema
 # ---------------------------------------------------------------------------
-if ! mysql -h "$db_host" -u root ${db_root_password:+-p"$db_root_password"} < "${HYBRID_PATH}/configs/mysql/schema/freeradius.sql" 2>/dev/null; then
+if ! mysql -h "$db_host" -u root ${db_root_password:+-p"$db_root_password"} < "${PROJECT_PATH}/configs/mysql/schema/freeradius.sql" 2>/dev/null; then
     echo "Could not apply the schema automatically against ${db_host}."
-    echo "Apply it manually: mysql -h ${db_host} -u <admin-user> -p ${db_name} < ${HYBRID_PATH}/configs/mysql/schema/freeradius.sql"
+    echo "Apply it manually: mysql -h ${db_host} -u <admin-user> -p ${db_name} < ${PROJECT_PATH}/configs/mysql/schema/freeradius.sql"
 fi
 
 # ---------------------------------------------------------------------------
@@ -158,7 +157,7 @@ mkdir -p /etc/radsecproxy/certs/chain
 rm -f /etc/radsecproxy/certs/key.pem /etc/radsecproxy/certs/client.pem /etc/radsecproxy/certs/chain.pem
 cp "$CERTS_PATH/wba/key.pem" /etc/radsecproxy/certs/key.pem
 cp "$CERTS_PATH/wba/client.pem" /etc/radsecproxy/certs/client.pem
-cp "${HYBRID_PATH}/configs/radsecproxy/certs/chain/"*.pem /etc/radsecproxy/certs/chain/
+cp "${PROJECT_PATH}/configs/radsecproxy/certs/chain/"*.pem /etc/radsecproxy/certs/chain/
 cat /etc/radsecproxy/certs/client.pem /etc/radsecproxy/certs/chain/WBA_Issuing_CA.pem /etc/radsecproxy/certs/chain/WBA_Cisco_Policy_CA.pem \
     /etc/radsecproxy/certs/chain/WBA_Issuing7_CA.pem /etc/radsecproxy/certs/chain/WBA_Policy7_CA.pem \
     > /etc/radsecproxy/certs/chain.pem
@@ -166,34 +165,34 @@ cat /etc/radsecproxy/certs/client.pem /etc/radsecproxy/certs/chain/WBA_Issuing_C
 sed -e "s/-RNAME-/${realm_name//./\\.}/g" \
     -e "s|-RCLIENT-|${client_cidr}|g" \
     -e "s/-RSECRET-/${client_secret}/g" \
-    "${HYBRID_PATH}/configs/radsecproxy/radsecproxy.conf" > /etc/radsecproxy.conf
+    "${PROJECT_PATH}/configs/radsecproxy/radsecproxy.conf" > /etc/radsecproxy.conf
 
-install -m 0755 "${HYBRID_PATH}/configs/radsecproxy/naptr-openroaming.sh" /etc/radsecproxy/naptr-openroaming.sh
+install -m 0755 "${PROJECT_PATH}/configs/radsecproxy/naptr-openroaming.sh" /etc/radsecproxy/naptr-openroaming.sh
 
 chown -R radsecproxy:radsecproxy /etc/radsecproxy /etc/radsecproxy.conf
 chmod 600 /etc/radsecproxy/certs/key.pem
 chmod 644 /etc/radsecproxy/certs/client.pem /etc/radsecproxy/certs/chain.pem
 
-install -m 0644 "${HYBRID_PATH}/systemd/radsecproxy.service" /etc/systemd/system/radsecproxy.service
+install -m 0644 "${PROJECT_PATH}/systemd/radsecproxy.service" /etc/systemd/system/radsecproxy.service
 systemctl daemon-reload
 systemctl enable --now radsecproxy
 
 # ---------------------------------------------------------------------------
 # 7. FreeRADIUS configuration
 # ---------------------------------------------------------------------------
-install -m 0644 "${HYBRID_PATH}/configs/freeradius/site-config/tls" "${FR_ETC}/sites-available/tls"
+install -m 0644 "${PROJECT_PATH}/configs/freeradius/site-config/tls" "${FR_ETC}/sites-available/tls"
 ln -sf ../sites-available/tls "${FR_ETC}/sites-enabled/tls"
 
 mkdir -p "${FR_ETC}/certs"
 cp "$CERTS_PATH/freeradius/"*.pem "${FR_ETC}/certs/"
 
-sed "s/-RNAME-/${realm_name//./\\.}/g" "${HYBRID_PATH}/configs/freeradius/proxy.conf" > "${FR_ETC}/proxy.conf"
-install -m 0644 "${HYBRID_PATH}/configs/freeradius/clients.conf" "${FR_ETC}/clients.conf"
+sed "s/-RNAME-/${realm_name//./\\.}/g" "${PROJECT_PATH}/configs/freeradius/proxy.conf" > "${FR_ETC}/proxy.conf"
+install -m 0644 "${PROJECT_PATH}/configs/freeradius/clients.conf" "${FR_ETC}/clients.conf"
 
 sed -e "s/-RSQLUSER-/${db_user}/g" \
     -e "s/-RSQLPASS-/${db_password}/g" \
-    "${HYBRID_PATH}/configs/freeradius/mods-available/sql" > "${FR_ETC}/mods-available/sql"
-install -m 0644 "${HYBRID_PATH}/configs/freeradius/mods-available/eap" "${FR_ETC}/mods-available/eap"
+    "${PROJECT_PATH}/configs/freeradius/mods-available/sql" > "${FR_ETC}/mods-available/sql"
+install -m 0644 "${PROJECT_PATH}/configs/freeradius/mods-available/eap" "${FR_ETC}/mods-available/eap"
 ln -sf ../mods-available/sql "${FR_ETC}/mods-enabled/sql"
 ln -sf ../mods-available/eap "${FR_ETC}/mods-enabled/eap"
 

@@ -1,5 +1,5 @@
 .idea
 certs/wba/*.pem
-hybrid/configs/radsecproxy/certs/*.pem
+configs/radsecproxy/certs/*.pem
 certs/freeradius/*.pem
-hybrid/configs/freeradius/certs/*.pem
+configs/freeradius/certs/*.pem
