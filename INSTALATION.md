@@ -3,28 +3,30 @@
 This guide is designed to help you set up a clean local installation for FreeRADIUS. Follow the steps carefully to ensure a proper and functional setup.  
 This project is specifically designed to be executed in the root folder of **Debian-based systems**. Running it outside the root folder or on non-Debian systems will be blocked due to missing permissions or capabilities for a proper configuration.
 
+The hybrid connector installs FreeRADIUS, radsecproxy, and (optionally) MariaDB directly on the host via native packages/systemd — no Docker is required.
+
 ## Table of Contents
 [Get Started](#get-started)
-1. [Project Clone and Environment Configuration](#1-project-clone-and-environment-configuration)
+1. [Project Clone](#1-project-clone)
 2. [Requirements](#2-requirements)
 3. [Running the prepare-debian11.sh Script](#3-running-the-prepare-debian11sh-script)
-4. [Verifying Docker Containers](#4-verifying-docker-containers)
+4. [Verifying Services](#4-verifying-services)
 ---
 
 ## Get Started
 
-Begin by preparing the system using the provided configuration script: **`prepare-debian11.sh`**.  
+Begin by preparing the system using the provided configuration script: **`hybrid/prepare-debian11.sh`**.  
 It configures FreeRADIUS by performing key steps such as installing dependencies, validating required certificates, and preparing the necessary configurations for deployment. This ensures a smooth and consistent installation process.
 
 - All configurations for this project are applied inside the **hybrid** folder. The folders located at the same root level of the project are only used during the initial installation.
 - Ensure that the **`prepare-debian11.sh`** script is run **only once**:
    - After the first run, the configuration variables will be removed and overwritten.
-   - To rerun the script or fix issues, you must either start the entire guide again or selectively modify specific files to reapply changes to the Docker Compose setup.
+   - To rerun the script or fix issues, you must either start the entire guide again or selectively modify specific files under `/etc/radsecproxy.conf`, `/etc/freeradius/3.0/`, and re-run the relevant `systemctl restart` command.
    - For more details on which files to modify, review **Section Two** of the [WBA OpenRoaming Connector Installation Guide](#).
 
 ---
 
-### 1. Project Clone and Environment Configuration
+### 1. Project Clone
 
 To begin, clone the project repository or download it directly from the official GitHub link below:
 
@@ -40,28 +42,7 @@ To begin, clone the project repository or download it directly from the official
 2. **Download as a ZIP file**:
    - Navigate to the repository on GitHub, select the **Code** button, and click **Download ZIP**.
 
-3. After cloning or downloading the project, locate the `env.sample` file in the root of the repository.
-   - This file contains critical environment variables that need to be updated before proceeding.
-
-4. Rename the `env.sample` file to `.env`:
-   ```bash
-   mv env.sample .env
-   ```
-
-5. Open the `.env` file in a text editor and update the following values with your own database credentials:
-   ```
-   MYSQL_ROOT_PASSWORD=your_root_password
-   MYSQL_USER=your_user
-   MYSQL_PASSWORD=your_password
-   ```
-
-6. Save the file and ensure it remains in the project’s root directory.
-
----
-
-#### Notes:
-- The `.env` file ensures that the database and associated services are configured correctly during the setup process. Make sure this is done before running any scripts.
-- Use a strong password for `MYSQL_ROOT_PASSWORD` to secure your environment.
+The script will prompt you interactively for your realm name, client CIDR/secret, and database credentials (including whether to install MariaDB locally or point at a remote/managed database host) — there is no `.env` file to prepare beforehand.
 
 ---
 
@@ -125,50 +106,51 @@ root@tetrapi-XPS-15-7590:~/wba-openroaming-connector/hybrid# ./prepare-debian11.
 
 ---
 
-# 4. Verifying Docker Containers
+# 4. Verifying Services
 
-Once the setup is complete, verify that all expected services are running using `docker ps`.
+Once the setup is complete, verify that all expected services are running using `systemctl`.
 
 #### Command:
 ```bash
-docker ps
+systemctl status radsecproxy freeradius mariadb
 ```
 
 #### Example Output:
 ```plaintext
-CONTAINER ID   IMAGE                 COMMAND                  STATUS         PORTS                                         NAMES
-642d2a23f456   hybrid-freeradius     "/docker-entrypoint.…"   Up 5 minutes   1812-1813/udp                                hybrid-freeradius-1
-8f250ad4a907   hybrid-radsecproxy    "/sbin/tini -- /root…"   Up 5 minutes   0.0.0.0:2083->2083/tcp, 11812-11813/tcp      hybrid-radsecproxy-1
-4cc3b65c2a51   mysql:8.0             "docker-entrypoint.s…"   Up 5 minutes   0.0.0.0:3306->3306/tcp                       hybrid-mysql_freeradius-1
+● radsecproxy.service - RadSec Proxy (OpenRoaming hybrid connector)
+     Loaded: loaded (/etc/systemd/system/radsecproxy.service; enabled)
+     Active: active (running)
+
+● freeradius.service - FreeRADIUS multi-protocol policy server
+     Loaded: loaded (/lib/systemd/system/freeradius.service; enabled)
+     Active: active (running)
+
+● mariadb.service - MariaDB 10.x database server
+     Loaded: loaded (/lib/systemd/system/mariadb.service; enabled)
+     Active: active (running)
 ```
+(`mariadb` only appears here if you chose the local-install option; skip it if you pointed the installer at a remote/managed database host.)
 
 ---
 
 #### Key Points to Verify:
-- **Container Names**: Ensure the containers correspond to roles in the project:
-   - `hybrid-freeradius-1`
-   - `hybrid-radsecproxy-1`
-   - `hybrid-mysql_freeradius-1`
-
-- **Port Mapping**: Verify the following ports:
-   - UDP ports `1812-1813` for FreeRADIUS.
-   - TCP and UDP ports `2083` for RadSecProxy.
-   - MySQL port `3306` for database access.
-
-- **Status**: Confirm all containers display **Up** in the status field.
+- All three units show **active (running)**.
+- **Port Mapping**: Verify the following are listening (`ss -tulnp`):
+   - UDP ports `11812`/`11813` on radsecproxy (local NAS/AP clients).
+   - TCP/UDP port `2083` on radsecproxy (RadSec federation).
+   - UDP ports `1812`/`1813` on FreeRADIUS (localhost only).
+   - TCP port `3306` on MariaDB (localhost only, unless using a remote/managed host).
+- **Logs**: `journalctl -u radsecproxy -f` and `journalctl -u freeradius -f` for live troubleshooting.
 
 ---
 
 ### Final Steps
 
-After verifying everything is running correctly:
-- Validate that relevant ports are open. Use the following command to allow required ports via UFW:
-  ```bash
-  for port in 11812/tcp 11812/udp 11813/tcp 11813/udp 2083/tcp 2083/udp; do sudo ufw allow $port; done
-  ```
+After verifying everything is running correctly, validate that relevant ports are open on your firewall/cloud security group. Use the following command to allow required ports via UFW:
+```bash
+for port in 11812/tcp 11812/udp 11813/tcp 11813/udp 2083/tcp 2083/udp; do sudo ufw allow $port; done
+```
 
-- Deploy the environment by running:
-  ```bash
-  docker compose up -d
-  ```
+Only expose `2083` (RadSec) externally if this node needs to be reachable by federation peers; keep `1812`/`1813`/`3306` bound to localhost.
+
 ---

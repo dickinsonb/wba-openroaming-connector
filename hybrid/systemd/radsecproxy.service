@@ -1,0 +1,19 @@
+[Unit]
+Description=RadSec Proxy (OpenRoaming hybrid connector)
+Documentation=https://github.com/radsecproxy/radsecproxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/radsecproxy -f -c /etc/radsecproxy.conf
+Restart=on-failure
+RestartSec=5
+User=radsecproxy
+Group=radsecproxy
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target

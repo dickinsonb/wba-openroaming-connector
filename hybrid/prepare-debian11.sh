@@ -1,47 +1,58 @@
 #!/bin/bash
-# This script is meant for quick & easy install via:
-#   $ curl -fsSL https://raw.githubusercontent.com/wireless-broadband-alliance/wba-openroaming-connector/main/prepare-debian11.sh -o prepare-debian11.sh
+# Native (non-Docker) installer for the OpenRoaming Hybrid Connector.
+#
+# Installs and wires up, directly on the host:
+#   - FreeRADIUS 3.2 (NetworkRADIUS/InkBridge apt repo)
+#   - radsecproxy (built from source, version pinned below)
+#   - MariaDB (installed locally, or skipped if pointed at a remote/DBaaS host)
+#
+# Usage:
+#   $ curl -fsSL https://raw.githubusercontent.com/wireless-broadband-alliance/wba-openroaming-connector/main/hybrid/prepare-debian11.sh -o prepare-debian11.sh
 #   $ chmod +x prepare-debian11.sh
 #   $ ./prepare-debian11.sh
 
+set -euo pipefail
+
 REPO_URL="https://github.com/wireless-broadband-alliance/wba-openroaming-connector.git"
 CERTS_PATH="/root/wba-openroaming-connector/certs"
+PROJECT_PATH="/root/wba-openroaming-connector"
+HYBRID_PATH="${PROJECT_PATH}/hybrid"
 
-if [ "$EUID" -ne 0 ]
-  then echo "You must run this script as root, you can either sudo the script directly or become root with a command such as 'sudo su'"
-  exit
+RADSECPROXY_VERSION="1.11.4"
+RADSECPROXY_URL="https://github.com/radsecproxy/radsecproxy/releases/download/${RADSECPROXY_VERSION}/radsecproxy-${RADSECPROXY_VERSION}.tar.gz"
+
+# Override if NetworkRADIUS/InkBridge change their repo layout for your
+# distro/release - verify against https://networkradius.com/packages/3.2/
+# before relying on this in production.
+NR_KEY_URL="${NR_KEY_URL:-https://packages.networkradius.com/pgp/packages@networkradius.com}"
+NR_REPO_BASE="${NR_REPO_BASE:-https://packages.networkradius.com/freeradius-3.2}"
+
+if [ "$EUID" -ne 0 ]; then
+    echo "You must run this script as root, you can either sudo the script directly or become root with a command such as 'sudo su'"
+    exit 1
 fi
 
-if [[ ! -f "$CERTS_PATH/wba/key.pem" ]]
-then
+if [[ ! -f "$CERTS_PATH/wba/key.pem" ]]; then
     echo "Please upload your certificate private key to $CERTS_PATH/wba/key.pem"
     exit 1
 fi
-
-
-if [[ ! -f "$CERTS_PATH/wba/client.pem" ]]
-then
+if [[ ! -f "$CERTS_PATH/wba/client.pem" ]]; then
     echo "Please upload your OpenRoaming certificate to $CERTS_PATH/wba/client.pem"
     exit 1
 fi
-
-if [[ ! -f "$CERTS_PATH/freeradius/cert.pem" ]]
-then
+if [[ ! -f "$CERTS_PATH/freeradius/cert.pem" ]]; then
     echo "Please upload your FreeRadius (LetsEncrypt) certificate to $CERTS_PATH/freeradius/cert.pem"
     exit 1
 fi
-if [[ ! -f "$CERTS_PATH/freeradius/chain.pem" ]]
-then
+if [[ ! -f "$CERTS_PATH/freeradius/chain.pem" ]]; then
     echo "Please upload your FreeRadius (LetsEncrypt) chain to $CERTS_PATH/freeradius/chain.pem"
     exit 1
 fi
-if [[ ! -f "$CERTS_PATH/freeradius/fullchain.pem" ]]
-then
+if [[ ! -f "$CERTS_PATH/freeradius/fullchain.pem" ]]; then
     echo "Please upload your FreeRadius (LetsEncrypt) fullchain to $CERTS_PATH/freeradius/fullchain.pem"
     exit 1
 fi
-if [[ ! -f "$CERTS_PATH/freeradius/privkey.pem" ]]
-then
+if [[ ! -f "$CERTS_PATH/freeradius/privkey.pem" ]]; then
     echo "Please upload your FreeRadius (LetsEncrypt) private key to $CERTS_PATH/freeradius/privkey.pem"
     exit 1
 fi
@@ -52,62 +63,146 @@ read -p "Enter the client CIDR (default: 0.0.0.0/0): " client_cidr
 client_cidr=${client_cidr:-0.0.0.0/0}
 read -p "Enter the client secret (default: radsec): " client_secret
 client_secret=${client_secret:-radsec}
-read -p "Enter MySQL root password [admin]: " MYSQL_ROOT_PASSWORD
-MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-admin}
 
-# Prompt for MySQL user name
-read -p "Enter MySQL user name [admin]: " MYSQL_USER
-MYSQL_USER=${MYSQL_USER:-admin}
-
-# Prompt for MySQL password
-read -p "Enter MySQL password [admin]: " MYSQL_PASSWORD
-MYSQL_PASSWORD=${MYSQL_PASSWORD:-admin}
-
-# Save the values to a .env file
-cat > .env <<EOL
-MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
-MYSQL_USER=${MYSQL_USER}
-MYSQL_PASSWORD=${MYSQL_PASSWORD}
-EOL
-
-# Replace placeholders in the sql file
-sed -i "s/-RSQLUSER-/${MYSQL_USER}/g" /root/wba-openroaming-connector/hybrid/configs/freeradius/mods-available/sql
-sed -i "s/-RSQLPASS-/${MYSQL_PASSWORD}/g" /root/wba-openroaming-connector/hybrid/configs/freeradius/mods-available/sql
-
-# Install dependencies
-apt-get update -y
-apt-get install curl wget nano git -y
-
-if ! command -v docker &> /dev/null
-then
-    # Install Docker
-    curl -fsSL https://get.docker.com -o get-docker.sh
-    sh get-docker.sh
-else
-    echo "Docker is already installed. Skipping installation."
+read -p "MariaDB host (leave blank to install MariaDB locally on this node): " db_host
+read -p "Enter database name (default: radius): " db_name
+db_name=${db_name:-radius}
+read -p "Enter database user (default: admin): " db_user
+db_user=${db_user:-admin}
+read -p "Enter database password (default: admin): " db_password
+db_password=${db_password:-admin}
+if [ -z "$db_host" ]; then
+    read -p "Enter MariaDB root password [admin]: " db_root_password
+    db_root_password=${db_root_password:-admin}
 fi
 
-#Prepare the environment
-cd /root
-git clone $REPO_URL
-# Prepare certificates
-cd /root/wba-openroaming-connector/hybrid/configs/radsecproxy/certs/chain
-rm -rf /root/wba-openroaming-connector/hybrid/configs/radsecproxy/certs/key.pem
-rm -rf /root/wba-openroaming-connector/hybrid/configs/radsecproxy/certs/client.pem
-rm -rf /root/wba-openroaming-connector/hybrid/chybridonfigs/radsecproxy/certs/chain.pem
-rm -rf /root/wba-openroaming-connector/hybrid/configs/freeradius/certs/*.pem
-#Prepare RadSec Certs
-cp $CERTS_PATH/wba/key.pem /root/wba-openroaming-connector/hybrid/configs/radsecproxy/certs/key.pem
-cp $CERTS_PATH/wba/client.pem /root/wba-openroaming-connector/hybrid/configs/radsecproxy/certs/client.pem
-cat /root/wba-openroaming-connector/hybrid/configs/radsecproxy/certs/client.pem /root/wba-openroaming-connector/hybrid/configs/radsecproxy/certs/chain/WBA_Issuing_CA.pem /root/wba-openroaming-connector/hybrid/configs/radsecproxy/certs/chain/WBA_Cisco_Policy_CA.pem /root/wba-openroaming-connector/anp/configs/radsecproxy/certs/chain/WBA_Issuing7_CA.pem /root/wba-openroaming-connector/anp/configs/radsecproxy/certs/chain/WBA_Policy7_CA.pem > /root/wba-openroaming-connector/hybrid/configs/radsecproxy/certs/chain.pem
-sed -i "s/-RNAME-/${realm_name//./\\.}/g" /root/wba-openroaming-connector/hybrid/configs/radsecproxy/radsecproxy.conf
-sed -i "s/-RNAME-/${realm_name//./\\.}/g" /root/wba-openroaming-connector/hybrid/configs/freeradius/proxy.conf
-sed -i "s|-RCLIENT-|${client_cidr}|g" /root/wba-openroaming-connector/hybrid/configs/radsecproxy/radsecproxy.conf
-sed -i "s/-RSECRET-/${client_secret}/g" /root/wba-openroaming-connector/hybrid/configs/radsecproxy/radsecproxy.conf
-#Prepare FreeRADIUS Certs
-cp $CERTS_PATH/freeradius/*.pem /root/wba-openroaming-connector/hybrid/configs/freeradius/certs
-# ready workdir
-cd /root/wba-openroaming-connector/hybrid/
-docker compose up -d
+# ---------------------------------------------------------------------------
+# 1. Base dependencies
+# ---------------------------------------------------------------------------
+apt-get update -y
+apt-get install -y curl wget nano git gnupg build-essential libssl-dev nettle-dev pkg-config
 
-echo "Reminder: Make sure UDP ports 11812 and 11813 are open on your firewall (on your cloud provider if applicable), refer to the documentation for more details"
+# ---------------------------------------------------------------------------
+# 2. FreeRADIUS 3.2 via NetworkRADIUS/InkBridge apt repo
+# ---------------------------------------------------------------------------
+. /etc/os-release
+install -d -o root -g root -m 0755 /etc/apt/keyrings
+curl -fsSL "$NR_KEY_URL" -o /etc/apt/keyrings/packages.networkradius.com.asc
+
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/packages.networkradius.com.asc] ${NR_REPO_BASE}/${ID} ${VERSION_CODENAME} main" \
+    > /etc/apt/sources.list.d/networkradius.list
+
+if ! apt-get update -y; then
+    echo "Failed to fetch the NetworkRADIUS/InkBridge apt repo for ${ID}/${VERSION_CODENAME}."
+    echo "Check the current repo path at https://networkradius.com/packages/3.2/ and re-run with NR_REPO_BASE set accordingly."
+    exit 1
+fi
+apt-get install -y freeradius freeradius-utils freeradius-mysql
+
+FR_ETC=/etc/freeradius/3.0
+if [ ! -d "$FR_ETC" ]; then
+    FR_ETC=/etc/freeradius
+fi
+
+# ---------------------------------------------------------------------------
+# 3. MariaDB (local install, unless a remote/DBaaS host was given)
+# ---------------------------------------------------------------------------
+if [ -z "$db_host" ]; then
+    apt-get install -y mariadb-server mariadb-client
+    systemctl enable --now mariadb
+    db_host="localhost"
+
+    mysql -u root <<SQL
+CREATE DATABASE IF NOT EXISTS ${db_name};
+CREATE USER IF NOT EXISTS '${db_user}'@'localhost' IDENTIFIED BY '${db_password}';
+GRANT ALL PRIVILEGES ON ${db_name}.* TO '${db_user}'@'localhost';
+FLUSH PRIVILEGES;
+SQL
+else
+    apt-get install -y mariadb-client
+fi
+
+# ---------------------------------------------------------------------------
+# 4. Fetch project files (configs, certs, schema) if not already present
+# ---------------------------------------------------------------------------
+if [ ! -d "$PROJECT_PATH" ]; then
+    mkdir -p "$(dirname "$PROJECT_PATH")"
+    git clone "$REPO_URL" "$PROJECT_PATH"
+fi
+
+# ---------------------------------------------------------------------------
+# 5. Apply the FreeRADIUS SQL schema
+# ---------------------------------------------------------------------------
+if ! mysql -h "$db_host" -u root ${db_root_password:+-p"$db_root_password"} < "${HYBRID_PATH}/configs/mysql/schema/freeradius.sql" 2>/dev/null; then
+    echo "Could not apply the schema automatically against ${db_host}."
+    echo "Apply it manually: mysql -h ${db_host} -u <admin-user> -p ${db_name} < ${HYBRID_PATH}/configs/mysql/schema/freeradius.sql"
+fi
+
+# ---------------------------------------------------------------------------
+# 6. Build and install radsecproxy from source
+# ---------------------------------------------------------------------------
+id -u radsecproxy &>/dev/null || useradd --system --no-create-home --shell /usr/sbin/nologin radsecproxy
+
+BUILD_DIR="$(mktemp -d)"
+curl -fsSL "$RADSECPROXY_URL" -o "${BUILD_DIR}/radsecproxy.tar.gz"
+tar xf "${BUILD_DIR}/radsecproxy.tar.gz" --strip-components=1 -C "$BUILD_DIR"
+(
+    cd "$BUILD_DIR"
+    ./configure --prefix=/usr/local --sysconfdir=/etc
+    make
+    make install
+)
+rm -rf "$BUILD_DIR"
+
+mkdir -p /etc/radsecproxy/certs/chain
+rm -f /etc/radsecproxy/certs/key.pem /etc/radsecproxy/certs/client.pem /etc/radsecproxy/certs/chain.pem
+cp "$CERTS_PATH/wba/key.pem" /etc/radsecproxy/certs/key.pem
+cp "$CERTS_PATH/wba/client.pem" /etc/radsecproxy/certs/client.pem
+cp "${HYBRID_PATH}/configs/radsecproxy/certs/chain/"*.pem /etc/radsecproxy/certs/chain/
+cat /etc/radsecproxy/certs/client.pem /etc/radsecproxy/certs/chain/WBA_Issuing_CA.pem /etc/radsecproxy/certs/chain/WBA_Cisco_Policy_CA.pem \
+    /etc/radsecproxy/certs/chain/WBA_Issuing7_CA.pem /etc/radsecproxy/certs/chain/WBA_Policy7_CA.pem \
+    > /etc/radsecproxy/certs/chain.pem
+
+sed -e "s/-RNAME-/${realm_name//./\\.}/g" \
+    -e "s|-RCLIENT-|${client_cidr}|g" \
+    -e "s/-RSECRET-/${client_secret}/g" \
+    "${HYBRID_PATH}/configs/radsecproxy/radsecproxy.conf" > /etc/radsecproxy.conf
+
+install -m 0755 "${HYBRID_PATH}/configs/radsecproxy/naptr-openroaming.sh" /etc/radsecproxy/naptr-openroaming.sh
+
+chown -R radsecproxy:radsecproxy /etc/radsecproxy /etc/radsecproxy.conf
+chmod 600 /etc/radsecproxy/certs/key.pem
+chmod 644 /etc/radsecproxy/certs/client.pem /etc/radsecproxy/certs/chain.pem
+
+install -m 0644 "${HYBRID_PATH}/systemd/radsecproxy.service" /etc/systemd/system/radsecproxy.service
+systemctl daemon-reload
+systemctl enable --now radsecproxy
+
+# ---------------------------------------------------------------------------
+# 7. FreeRADIUS configuration
+# ---------------------------------------------------------------------------
+install -m 0644 "${HYBRID_PATH}/configs/freeradius/site-config/tls" "${FR_ETC}/sites-available/tls"
+ln -sf ../sites-available/tls "${FR_ETC}/sites-enabled/tls"
+
+mkdir -p "${FR_ETC}/certs"
+cp "$CERTS_PATH/freeradius/"*.pem "${FR_ETC}/certs/"
+
+sed "s/-RNAME-/${realm_name//./\\.}/g" "${HYBRID_PATH}/configs/freeradius/proxy.conf" > "${FR_ETC}/proxy.conf"
+install -m 0644 "${HYBRID_PATH}/configs/freeradius/clients.conf" "${FR_ETC}/clients.conf"
+
+sed -e "s/-RSQLUSER-/${db_user}/g" \
+    -e "s/-RSQLPASS-/${db_password}/g" \
+    "${HYBRID_PATH}/configs/freeradius/mods-available/sql" > "${FR_ETC}/mods-available/sql"
+install -m 0644 "${HYBRID_PATH}/configs/freeradius/mods-available/eap" "${FR_ETC}/mods-available/eap"
+ln -sf ../mods-available/sql "${FR_ETC}/mods-enabled/sql"
+ln -sf ../mods-available/eap "${FR_ETC}/mods-enabled/eap"
+
+chown -R freerad:freerad "${FR_ETC}/certs" "${FR_ETC}/sites-available/tls" "${FR_ETC}/mods-available/sql" "${FR_ETC}/mods-available/eap"
+chmod 600 "${FR_ETC}/certs/"*.pem
+chmod 600 "${FR_ETC}/sites-available/tls" "${FR_ETC}/mods-available/sql"
+
+systemctl enable --now freeradius
+systemctl restart freeradius
+
+echo "Reminder: Make sure UDP/TCP ports 11812, 11813 (local NAS/AP clients) and 2083 (RadSec federation) are open on your firewall (on your cloud provider if applicable), refer to the documentation for more details"
+echo "Verify with: systemctl status radsecproxy freeradius mariadb"

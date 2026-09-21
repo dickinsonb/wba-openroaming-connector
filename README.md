@@ -24,9 +24,10 @@ For more information about OpenRoaming Technology please visit: https://openroam
 
 ## Prerequisites:
 - Git (optional and highly recommended for easier updates, if the user prefers to clone the repository)
-- Linux based system - Ubuntu 22.04 LTS (tested for the reference implementation)
+- Linux based system - Debian/Ubuntu based (tested for the reference implementation)
 - Knowledge about Linux OS (required to set up the project)
-- Docker (required for running the application and managing the multiple containers)
+- Docker (required for the **ANP** and **IDP** connectors, which run as containers)
+- The **Hybrid** connector installs FreeRADIUS, radsecproxy, and MariaDB natively via `systemd` — no Docker required
 
 ### How to get the Project
 
