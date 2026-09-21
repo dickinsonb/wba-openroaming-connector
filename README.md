@@ -10,15 +10,7 @@ The project was developed to simplify the setup process for FreeRadius, RadSecPr
 
 OpenRoaming is an **open standard developed to enable global, secure, and automatic Wi-Fi connectivity**. With OpenRoaming, users can connect to Wi-Fi networks without being prompted for login credentials, while carrying a unique embedded identity.
 
-The script (prepare-debian11.sh) provided in this project simplifies the setup of FreeRadius, RadSecProxy, and MySQL servers by automating the process of preparing the necessary certificates, realm names, IP addresses, and other required information.
-
-The are currently three possible scenarios:
-- Access Network Provider Connector (ANP)
-- Identity Provider Connector (IDP)
-- Hybrid Connector (combination of ANP and IDP)
-
-The script prompts the user for input and saves the values to a .env file, which is then used to configure the Docker containers for FreeRadius, RadSecProxy, and MySQL. This makes it easy for users to set up a secure and
-automatic Wi-Fi connectivity environment using the OpenRoaming standard.
+The script (`hybrid/prepare-debian11.sh`) provided in this project simplifies the setup of FreeRadius, RadSecProxy, and MariaDB by automating the process of preparing the necessary certificates, realm names, IP addresses, and other required information — installing everything natively via `systemd`, no Docker required.
 
 For more information about OpenRoaming Technology please visit: https://openroaming.org
 
@@ -26,8 +18,6 @@ For more information about OpenRoaming Technology please visit: https://openroam
 - Git (optional and highly recommended for easier updates, if the user prefers to clone the repository)
 - Linux based system - Debian/Ubuntu based (tested for the reference implementation)
 - Knowledge about Linux OS (required to set up the project)
-- Docker (required for the **ANP** and **IDP** connectors, which run as containers)
-- The **Hybrid** connector installs FreeRADIUS, radsecproxy, and MariaDB natively via `systemd` — no Docker required
 
 ### How to get the Project
 
@@ -41,8 +31,7 @@ There are two options to retrieve the project:
 ```
 
 2. **Download Release Package**: Or if you can just download the release package from the releases section on GitHub. This package contains
-   only the required components to run,
-   including `.env.sample`, `docker-compose.yml`, and other necessary files.
+   only the required components to run, including `hybrid/prepare-debian11.sh` and the associated config files.
 
    
 # ⚙️ Installation Guide
