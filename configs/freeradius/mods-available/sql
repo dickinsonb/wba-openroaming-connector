@@ -37,7 +37,7 @@ sql {
 	#	sqlite
 	#	mongo
 	#
-	dialect = "mysql"
+	dialect = "postgresql"
 
 	#
 	#  The driver module used to execute the queries.  Since we
@@ -57,7 +57,7 @@ sql {
 	#	rlm_sql_iodbc
 	#	rlm_sql_unixodbc
 	#
-	driver = "rlm_sql_mysql"
+	driver = "rlm_sql_postgresql"
 #	driver = "rlm_sql_${dialect}"
 
 	#
@@ -164,8 +164,8 @@ sql {
 
 	# Connection info:
 	#
-	server = "mysql"
-	port = 3306
+	server = "-RSQLHOST-"
+	port = 5432
 	login = "-RSQLUSER-"
 	password = "-RSQLPASS-"
 

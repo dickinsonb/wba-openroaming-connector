@@ -3,7 +3,7 @@
 This guide is designed to help you set up a clean local installation for FreeRADIUS. Follow the steps carefully to ensure a proper and functional setup.  
 This project is specifically designed to be executed in the root folder of **Debian-based systems**. Running it outside the root folder or on non-Debian systems will be blocked due to missing permissions or capabilities for a proper configuration.
 
-The hybrid connector installs FreeRADIUS, radsecproxy, and (optionally) MariaDB directly on the host via native packages/systemd — no Docker is required.
+The hybrid connector installs FreeRADIUS, radsecproxy, and (optionally) PostgreSQL directly on the host via native packages/systemd — no Docker is required.
 
 ## Table of Contents
 [Get Started](#get-started)
@@ -41,7 +41,7 @@ To begin, clone the project repository or download it directly from the official
 2. **Download as a ZIP file**:
    - Navigate to the repository on GitHub, select the **Code** button, and click **Download ZIP**.
 
-The script will prompt you interactively for your realm name, client CIDR/secret, and database credentials (including whether to install MariaDB locally or point at a remote/managed database host) — there is no `.env` file to prepare beforehand.
+The script will prompt you interactively for your realm name, client CIDR/secret, and database credentials (including whether to install PostgreSQL locally or point at a remote/managed database host) — there is no `.env` file to prepare beforehand.
 
 ---
 
@@ -111,7 +111,7 @@ Once the setup is complete, verify that all expected services are running using 
 
 #### Command:
 ```bash
-systemctl status radsecproxy freeradius mariadb
+systemctl status radsecproxy freeradius postgresql
 ```
 
 #### Example Output:
@@ -124,11 +124,11 @@ systemctl status radsecproxy freeradius mariadb
      Loaded: loaded (/lib/systemd/system/freeradius.service; enabled)
      Active: active (running)
 
-● mariadb.service - MariaDB 10.x database server
-     Loaded: loaded (/lib/systemd/system/mariadb.service; enabled)
+● postgresql.service - PostgreSQL database server
+     Loaded: loaded (/lib/systemd/system/postgresql.service; enabled)
      Active: active (running)
 ```
-(`mariadb` only appears here if you chose the local-install option; skip it if you pointed the installer at a remote/managed database host.)
+(`postgresql` only appears here if you chose the local-install option; skip it if you pointed the installer at a remote/managed database host.)
 
 ---
 
@@ -138,7 +138,7 @@ systemctl status radsecproxy freeradius mariadb
    - UDP ports `11812`/`11813` on radsecproxy (local NAS/AP clients).
    - TCP/UDP port `2083` on radsecproxy (RadSec federation).
    - UDP ports `1812`/`1813` on FreeRADIUS (localhost only).
-   - TCP port `3306` on MariaDB (localhost only, unless using a remote/managed host).
+   - TCP port `5432` on PostgreSQL (localhost only, unless using a remote/managed host).
 - **Logs**: `journalctl -u radsecproxy -f` and `journalctl -u freeradius -f` for live troubleshooting.
 
 ---
@@ -150,6 +150,6 @@ After verifying everything is running correctly, validate that relevant ports ar
 for port in 11812/tcp 11812/udp 11813/tcp 11813/udp 2083/tcp 2083/udp; do sudo ufw allow $port; done
 ```
 
-Only expose `2083` (RadSec) externally if this node needs to be reachable by federation peers; keep `1812`/`1813`/`3306` bound to localhost.
+Only expose `2083` (RadSec) externally if this node needs to be reachable by federation peers; keep `1812`/`1813`/`5432` bound to localhost.
 
 ---

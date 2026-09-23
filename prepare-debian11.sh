@@ -4,7 +4,7 @@
 # Installs and wires up, directly on the host:
 #   - FreeRADIUS 3.2 (NetworkRADIUS/InkBridge apt repo)
 #   - radsecproxy (built from source, version pinned below)
-#   - MariaDB (installed locally, or skipped if pointed at a remote/DBaaS host)
+#   - PostgreSQL (installed locally, or skipped if pointed at a remote/DBaaS host)
 #
 # Usage:
 #   $ curl -fsSL https://raw.githubusercontent.com/wireless-broadband-alliance/wba-openroaming-connector/main/prepare-debian11.sh -o prepare-debian11.sh
@@ -63,17 +63,13 @@ client_cidr=${client_cidr:-0.0.0.0/0}
 read -p "Enter the client secret (default: radsec): " client_secret
 client_secret=${client_secret:-radsec}
 
-read -p "MariaDB host (leave blank to install MariaDB locally on this node): " db_host
+read -p "PostgreSQL host (leave blank to install PostgreSQL locally on this node): " db_host
 read -p "Enter database name (default: radius): " db_name
 db_name=${db_name:-radius}
 read -p "Enter database user (default: admin): " db_user
 db_user=${db_user:-admin}
 read -p "Enter database password (default: admin): " db_password
 db_password=${db_password:-admin}
-if [ -z "$db_host" ]; then
-    read -p "Enter MariaDB root password [admin]: " db_root_password
-    db_root_password=${db_root_password:-admin}
-fi
 
 # ---------------------------------------------------------------------------
 # 1. Base dependencies
@@ -96,7 +92,7 @@ if ! apt-get update -y; then
     echo "Check the current repo path at https://networkradius.com/packages/3.2/ and re-run with NR_REPO_BASE set accordingly."
     exit 1
 fi
-apt-get install -y freeradius freeradius-utils freeradius-mysql
+apt-get install -y freeradius freeradius-utils freeradius-postgresql
 
 FR_ETC=/etc/freeradius/3.0
 if [ ! -d "$FR_ETC" ]; then
@@ -104,21 +100,29 @@ if [ ! -d "$FR_ETC" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 3. MariaDB (local install, unless a remote/DBaaS host was given)
+# 3. PostgreSQL (local install, unless a remote/DBaaS host was given)
 # ---------------------------------------------------------------------------
 if [ -z "$db_host" ]; then
-    apt-get install -y mariadb-server mariadb-client
-    systemctl enable --now mariadb
+    apt-get install -y postgresql postgresql-client
+    systemctl enable --now postgresql
     db_host="localhost"
 
-    mysql -u root <<SQL
-CREATE DATABASE IF NOT EXISTS ${db_name};
-CREATE USER IF NOT EXISTS '${db_user}'@'localhost' IDENTIFIED BY '${db_password}';
-GRANT ALL PRIVILEGES ON ${db_name}.* TO '${db_user}'@'localhost';
-FLUSH PRIVILEGES;
+    sudo -u postgres psql <<SQL
+CREATE DATABASE ${db_name};
+CREATE USER ${db_user} WITH ENCRYPTED PASSWORD '${db_password}';
+GRANT ALL PRIVILEGES ON DATABASE ${db_name} TO ${db_user};
 SQL
+    sudo -u postgres psql -d "$db_name" -c "GRANT ALL ON SCHEMA public TO ${db_user};"
+
+    # Allow the FreeRADIUS SQL module (which connects over TCP, not the
+    # Unix socket) to authenticate with a password on loopback.
+    PG_HBA="$(sudo -u postgres psql -tAc 'SHOW hba_file;')"
+    if ! grep -q "^host\s\+${db_name}\s\+${db_user}\s\+127.0.0.1/32" "$PG_HBA"; then
+        echo "host    ${db_name}    ${db_user}    127.0.0.1/32    scram-sha-256" >> "$PG_HBA"
+        systemctl reload postgresql
+    fi
 else
-    apt-get install -y mariadb-client
+    apt-get install -y postgresql-client
 fi
 
 # ---------------------------------------------------------------------------
@@ -132,9 +136,17 @@ fi
 # ---------------------------------------------------------------------------
 # 5. Apply the FreeRADIUS SQL schema
 # ---------------------------------------------------------------------------
-if ! mysql -h "$db_host" -u root ${db_root_password:+-p"$db_root_password"} < "${PROJECT_PATH}/configs/mysql/schema/freeradius.sql" 2>/dev/null; then
+SCHEMA_FILE="${PROJECT_PATH}/configs/postgresql/schema/freeradius.sql"
+if [ "$db_host" = "localhost" ]; then
+    SCHEMA_APPLY_OK=1
+    sudo -u postgres psql -d "$db_name" -f "$SCHEMA_FILE" || SCHEMA_APPLY_OK=0
+else
+    SCHEMA_APPLY_OK=1
+    PGPASSWORD="$db_password" psql "host=${db_host} port=5432 dbname=${db_name} user=${db_user} sslmode=require" -f "$SCHEMA_FILE" || SCHEMA_APPLY_OK=0
+fi
+if [ "$SCHEMA_APPLY_OK" -eq 0 ]; then
     echo "Could not apply the schema automatically against ${db_host}."
-    echo "Apply it manually: mysql -h ${db_host} -u <admin-user> -p ${db_name} < ${PROJECT_PATH}/configs/mysql/schema/freeradius.sql"
+    echo "Apply it manually: psql \"host=${db_host} port=5432 dbname=${db_name} user=${db_user} sslmode=require\" -f ${SCHEMA_FILE}"
 fi
 
 # ---------------------------------------------------------------------------
@@ -191,6 +203,7 @@ install -m 0644 "${PROJECT_PATH}/configs/freeradius/clients.conf" "${FR_ETC}/cli
 
 sed -e "s/-RSQLUSER-/${db_user}/g" \
     -e "s/-RSQLPASS-/${db_password}/g" \
+    -e "s/-RSQLHOST-/${db_host}/g" \
     "${PROJECT_PATH}/configs/freeradius/mods-available/sql" > "${FR_ETC}/mods-available/sql"
 install -m 0644 "${PROJECT_PATH}/configs/freeradius/mods-available/eap" "${FR_ETC}/mods-available/eap"
 ln -sf ../mods-available/sql "${FR_ETC}/mods-enabled/sql"
@@ -204,4 +217,4 @@ systemctl enable --now freeradius
 systemctl restart freeradius
 
 echo "Reminder: Make sure UDP/TCP ports 11812, 11813 (local NAS/AP clients) and 2083 (RadSec federation) are open on your firewall (on your cloud provider if applicable), refer to the documentation for more details"
-echo "Verify with: systemctl status radsecproxy freeradius mariadb"
+echo "Verify with: systemctl status radsecproxy freeradius postgresql"

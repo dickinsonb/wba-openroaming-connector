@@ -4,13 +4,13 @@ Welcome to the Openroaming Connector! This repository offers a **reference imple
 
 ## Why it was created?
 
-The project was developed to simplify the setup process for FreeRadius, RadSecProxy, and MySQL configurations in Openroaming. It also aims to ensure that all necessary components are in place to support the generation and synchronization of Passpoint provisioning profiles.
+The project was developed to simplify the setup process for FreeRadius, RadSecProxy, and PostgreSQL configurations in Openroaming. It also aims to ensure that all necessary components are in place to support the generation and synchronization of Passpoint provisioning profiles.
 
 ## How it works?
 
 OpenRoaming is an **open standard developed to enable global, secure, and automatic Wi-Fi connectivity**. With OpenRoaming, users can connect to Wi-Fi networks without being prompted for login credentials, while carrying a unique embedded identity.
 
-The script (`prepare-debian11.sh`) provided in this project simplifies the setup of FreeRadius, RadSecProxy, and MariaDB by automating the process of preparing the necessary certificates, realm names, IP addresses, and other required information — installing everything natively via `systemd`, no Docker required.
+The script (`prepare-debian11.sh`) provided in this project simplifies the setup of FreeRadius, RadSecProxy, and PostgreSQL by automating the process of preparing the necessary certificates, realm names, IP addresses, and other required information — installing everything natively via `systemd`, no Docker required.
 
 For more information about OpenRoaming Technology please visit: https://openroaming.org
 
